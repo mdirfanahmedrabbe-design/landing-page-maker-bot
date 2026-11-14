@@ -1,0 +1,57 @@
+# ল্যান্ডিং পেজ বট — GitHub Actions-এ প্রতি ৫ মিনিটে একবার চলে (ফ্রি)।
+# Repo-র layout: bot/bot.py, bot/landing_template.html, bot/requirements.txt,
+# .github/workflows/bot.yml, shop/ (বানানো পেজগুলো এখানে জমা হয়)।
+# শুধু একটা Secret লাগে: BOT_TOKEN (Settings -> Secrets and variables -> Actions)।
+name: Landing Page Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r bot/requirements.txt
+
+      - name: Restore bot state
+        uses: actions/cache@v4
+        with:
+          path: bot-state
+          key: bot-state-${{ github.run_id }}
+          restore-keys: |
+            bot-state-
+
+      - name: Run bot once
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          STATE_DIR: bot-state
+          PAGES_DIR: shop
+          PUBLIC_BASE_URL: https://mdirfanahmedrabbe-design.github.io/landing-page-maker-bot/shop
+          LINK_MODE: local
+        run: python bot/bot.py --once
+
+      - name: Commit and push new pages
+        run: |
+          git config user.name "landing-page-bot"
+          git config user.email "landing-page-bot@users.noreply.github.com"
+          git add shop/
+          git diff --cached --quiet || git commit -m "Add new landing pages"
+          git push
